@@ -29,26 +29,6 @@ void usage() {
 	printf("sample : send-arp wlan0 192.168.10.2 192.168.10.1");
 }
 
-void get_attacker_info(string interface, Mac& attackerMac, Ip& attackerIp ) {
-   
-    ifstream fp ("/sys/class/net/" + interface + "/address");
-    string macaddr;
-    fp >> macaddr;
-    fp.close();
-    attackerMac = macaddr;
-
-    int s = socket(AF_INET, SOCK_DGRAM, 0);
-    ifreq ifr;
-    ifr.ifr_addr.sa_family = AF_INET;
-    strncpy(ifr.ifr_name, interface.c_str(), IFNAMSIZ -1);
-
-    ioctl(s, SIOCGIFADDR, &ifr);
-
-    string ipaddr = inet_ntoa(((sockaddr_in *) &ifr.ifr_addr) -> sin_addr);
-    attackerIp = Ip(ipaddr);
-
-}
-
 void send_arp(pcap_t* handle, Mac& eth_dmac, Mac& eth_smac, Mac& arp_smac, Ip& arp_sip, Mac& arp_tmac, Ip& arp_tip, bool isRequest ){
 
 	EthArpPacket packet;
