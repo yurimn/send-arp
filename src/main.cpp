@@ -107,6 +107,7 @@ int main(int argc, char* argv[]) {
 	
 	char* dev = argv[1];
 	char errbuf[PCAP_ERRBUF_SIZE];
+
 	pcap_t* handle = pcap_open_live(dev, BUFSIZ, 1, 1, errbuf);
 	if (handle == nullptr) {
 		fprintf(stderr, "cant' open %s(%s)\n", dev, errbuf);
