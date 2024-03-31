@@ -119,6 +119,7 @@ int main(int argc, char* argv[]) {
 		else {
 			printf("Attack success\n");
 		}
+		
 		pcap_close(handle);
 	}
 }
