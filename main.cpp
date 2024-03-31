@@ -67,7 +67,6 @@ int main(int argc, char* argv[]) {
 		packet.eth_.dmac_ = Mac("ff:ff:ff:ff:ff:ff");
 		packet.eth_.smac_ = my_mac;
 		packet.eth_.type_ = htons(EthHdr::Arp);
-
 		packet.arp_.hrd_ = htons(ArpHdr::ETHER);
 		packet.arp_.pro_ = htons(EthHdr::Ip4);
 		packet.arp_.hln_ = Mac::SIZE;
